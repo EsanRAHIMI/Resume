@@ -12,6 +12,7 @@ require('dotenv').config();
 const uploadRoutes = require('./routes/upload');
 const resumeRoutes = require('./routes/resume');
 const authRoutes = require('./routes/auth');
+const codeRoutes = require('./routes/code'); //Do not change this line at all and there is no need to create the file.
 
 const app = express();
 
@@ -33,6 +34,17 @@ app.use(cors({
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
+// Session middleware for code browser authentication
+app.use(session({
+  secret: process.env.SESSION_SECRET || 'your-secret-key-here',
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    secure: process.env.NODE_ENV === 'production',
+    maxAge: 24 * 60 * 60 * 1000 // 24 hours
+  }
 }));
 
 // Rate limiting
@@ -79,6 +91,7 @@ async function initializeApp() {
     app.use('/api/auth', authRoutes);
     app.use('/api/upload', uploadRoutes);
     app.use('/api/resume', resumeRoutes);
+    app.use('/api/code', codeRoutes);
 
     // Health check
     app.get('/health', (req, res) => {
@@ -97,9 +110,10 @@ async function initializeApp() {
         endpoints: {
           auth: '/api/auth',
           upload: '/api/upload',
-          resumes: '/api/resume'
+          resumes: '/api/resume',
+          code: '/api/code'
         },
-        documentation: 'https://your-docs-url.com'
+        documentation: 'https://EhsanRahimi.com/resume'
       });
     });
 

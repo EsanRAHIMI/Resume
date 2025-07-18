@@ -23,7 +23,6 @@ const ResumePreview = ({ resumeData }) => {
           <div className="header-content">
             <h1 className="name">{personalInfo.name || 'EHSAN RAHIMI'}</h1>
             <h2 className="title">{personalInfo.title || 'CHIEF ARTIFICIAL INTELLIGENCE OFFICER (CAIO)'}</h2>
-            <h3 className="subtitle">DIRECTOR OF TECHNOLOGY & DIGITAL TRANSFORMATION</h3>
           </div>
         </div>
         
@@ -32,15 +31,6 @@ const ResumePreview = ({ resumeData }) => {
             <div className="qr-placeholder">QR</div>
           </div>
           <span className="qr-label">Scan for vCard</span>
-        </div>
-      </div>
-
-      {/* Award Badge */}
-      <div className="award-badge">
-        <div className="badge-content">
-          <div className="badge-year">2025</div>
-          <div className="badge-event">AAAI</div>
-          <div className="badge-status">WINNER</div>
         </div>
       </div>
 

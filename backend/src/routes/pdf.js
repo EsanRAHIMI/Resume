@@ -193,44 +193,6 @@ function generateProfessionalResumeHTML(data) {
                   line-height: 1.2;
               }
               
-              /* Award Badge */
-              .award-badge {
-                  position: absolute;
-                  top: 120px;
-                  left: 20px;
-                  width: 60px;
-                  height: 60px;
-                  background: #3498db;
-                  border-radius: 50%;
-                  display: flex;
-                  align-items: center;
-                  justify-content: center;
-                  color: white;
-                  font-size: 6pt;
-                  font-weight: bold;
-                  text-align: center;
-                  line-height: 1.1;
-                  z-index: 10;
-                  border: 3px solid white;
-                  box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-              }
-              
-              .badge-content {
-                  text-align: center;
-              }
-              
-              .badge-year {
-                  font-size: 7px;
-              }
-              
-              .badge-event {
-                  font-size: 6px;
-              }
-              
-              .badge-status {
-                  font-size: 7px;
-              }
-              
               /* Main Content */
               .resume-main {
                   display: flex;
@@ -541,15 +503,6 @@ function generateProfessionalResumeHTML(data) {
                           <div class="qr-placeholder">QR</div>
                       </div>
                       <span class="qr-label">Scan for vCard</span>
-                  </div>
-              </div>
-
-              <!-- Award Badge -->
-              <div class="award-badge">
-                  <div class="badge-content">
-                      <div class="badge-year">2025</div>
-                      <div class="badge-event">AAAI</div>
-                      <div class="badge-status">WINNER</div>
                   </div>
               </div>
   
