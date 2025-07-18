@@ -13,21 +13,39 @@ import {
   CheckCircle, 
   AlertCircle, 
   Plus, 
-  X 
+  X,
+  ArrowLeft,
+  Save
 } from 'lucide-react';
 import './App.css';
-import { uploadResume, generatePDFFromPreview, generatePDF } from './services/api';
+import { uploadResume, generatePDFFromPreview, authAPI, resumeAPI } from './services/api';
 import ResumePreview from './components/ResumePreview';
+import Login from './components/Login';
+import Register from './components/Register';
+import ResumeDashboard from './components/ResumeDashboard';
 
 function App() {
-  // Core state management
+  // Authentication state
+  const [user, setUser] = useState(null);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [showRegister, setShowRegister] = useState(false);
+
+  // App state
+  const [currentView, setCurrentView] = useState('dashboard'); // dashboard, upload, edit, preview
   const [resumeData, setResumeData] = useState(null);
+  const [currentResumeId, setCurrentResumeId] = useState(null);
+  const [resumeTitle, setResumeTitle] = useState('');
+  const [resumeDescription, setResumeDescription] = useState('');
+
+  // UI state
   const [loading, setLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState('');
   const [activeTab, setActiveTab] = useState('upload');
   const [error, setError] = useState('');
+  const [saveStatus, setSaveStatus] = useState(''); // saved, saving, error
 
-  // Enhanced upload state management
+  // Upload state
   const [dragActive, setDragActive] = useState(false);
   const [uploadSuccess, setUploadSuccess] = useState(false);
   const [selectedFile, setSelectedFile] = useState(null);
@@ -35,7 +53,84 @@ function App() {
   const [processingStep, setProcessingStep] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
 
-  // Enhanced file upload handler with progress tracking
+  // Check authentication on app load
+  useEffect(() => {
+    checkAuthentication();
+  }, []);
+
+  const checkAuthentication = async () => {
+    try {
+      const response = await authAPI.checkAuth();
+      if (response.authenticated) {
+        setUser(response.user);
+        setIsAuthenticated(true);
+      }
+    } catch (error) {
+      console.error('Auth check error:', error);
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleLogin = (userData) => {
+    setUser(userData);
+    setIsAuthenticated(true);
+    setCurrentView('dashboard');
+  };
+
+  const handleRegister = (userData) => {
+    setUser(userData);
+    setIsAuthenticated(true);
+    setCurrentView('dashboard');
+  };
+
+  const handleLogout = () => {
+    setUser(null);
+    setIsAuthenticated(false);
+    setCurrentView('dashboard');
+    setResumeData(null);
+    setCurrentResumeId(null);
+    setError('');
+  };
+
+  const handleCreateNew = () => {
+    setCurrentView('upload');
+    setResumeData(null);
+    setCurrentResumeId(null);
+    setResumeTitle('');
+    setResumeDescription('');
+    setActiveTab('upload');
+  };
+
+  const handleEditResume = async (resume) => {
+    try {
+      setLoading(true);
+      setLoadingMessage('Loading resume...');
+      
+      const response = await resumeAPI.getResume(resume._id);
+      setResumeData(response.resume);
+      setCurrentResumeId(resume._id);
+      setResumeTitle(resume.title);
+      setResumeDescription(resume.description || '');
+      setCurrentView('edit');
+      setActiveTab('edit');
+    } catch (error) {
+      setError('Failed to load resume. Please try again.');
+      console.error('Load resume error:', error);
+    } finally {
+      setLoading(false);
+      setLoadingMessage('');
+    }
+  };
+
+  const handleBackToDashboard = () => {
+    setCurrentView('dashboard');
+    setResumeData(null);
+    setCurrentResumeId(null);
+    setError('');
+  };
+
+  // Enhanced file upload handler
   const handleFileUpload = useCallback(async (file) => {
     if (!file) return;
     
@@ -52,7 +147,6 @@ function App() {
       return;
     }
     
-    // Set file preview
     setSelectedFile({
       name: file.name,
       size: (file.size / 1024 / 1024).toFixed(2) + ' MB',
@@ -65,7 +159,6 @@ function App() {
     setError('');
     
     try {
-      // Simulate progress steps with realistic timing
       setProcessingStep('Uploading your resume...');
       setLoadingMessage('Uploading your resume...');
       await new Promise(resolve => setTimeout(resolve, 800));
@@ -84,7 +177,6 @@ function App() {
       setProcessingStep('Structuring your data...');
       setLoadingMessage('Structuring your data...');
       
-      // Actual API call
       const result = await uploadResume(file);
       setUploadProgress(100);
       
@@ -94,7 +186,6 @@ function App() {
       setUploadSuccess(true);
       setActiveTab('edit');
       
-      // Reset success state after animation
       setTimeout(() => {
         setUploadSuccess(false);
         setIsProcessing(false);
@@ -112,6 +203,56 @@ function App() {
       setProcessingStep('');
     }
   }, []);
+
+  // Save resume function
+  const saveResume = useCallback(async () => {
+    if (!resumeData || !resumeTitle.trim()) {
+      setError('Please provide a resume title');
+      return;
+    }
+
+    try {
+      setSaveStatus('saving');
+      
+      const resumePayload = {
+        title: resumeTitle.trim(),
+        description: resumeDescription.trim(),
+        personalInfo: resumeData.personalInfo,
+        experience: resumeData.experience,
+        education: resumeData.education,
+        skills: resumeData.skills,
+        certifications: resumeData.certifications,
+        languages: resumeData.languages,
+        projects: resumeData.projects
+      };
+
+      if (currentResumeId) {
+        await resumeAPI.updateResume(currentResumeId, resumePayload);
+      } else {
+        const response = await resumeAPI.createResume(resumePayload);
+        setCurrentResumeId(response.resume._id);
+      }
+      
+      setSaveStatus('saved');
+      setTimeout(() => setSaveStatus(''), 3000);
+    } catch (error) {
+      console.error('Save error:', error);
+      setError('Failed to save resume. Please try again.');
+      setSaveStatus('error');
+      setTimeout(() => setSaveStatus(''), 3000);
+    }
+  }, [resumeData, resumeTitle, resumeDescription, currentResumeId]);
+
+  // Auto-save effect
+  useEffect(() => {
+    if (resumeData && resumeTitle.trim() && currentView === 'edit') {
+      const autoSaveTimer = setTimeout(() => {
+        saveResume();
+      }, 30000); // Auto-save every 30 seconds
+
+      return () => clearTimeout(autoSaveTimer);
+    }
+  }, [resumeData, resumeTitle, saveResume, currentView]);
 
   // Drag and drop handlers
   const handleDrag = useCallback((e) => {
@@ -188,7 +329,7 @@ function App() {
     }));
   }, []);
 
-  // NEW: PDF generation from Live Preview
+  // PDF generation handler
   const generatePDFDownload = useCallback(async () => {
     if (!resumeData) {
       setError('No resume data available to generate PDF');
@@ -199,28 +340,10 @@ function App() {
       setLoading(true);
       setLoadingMessage('Generating PDF from Live Preview...');
       
-      // Try client-side PDF generation first
-      try {
-        const filename = `${resumeData.personalInfo?.name || 'Resume'}.pdf`;
-        await generatePDFFromPreview('resume-preview-for-pdf', filename);
-        setLoadingMessage('PDF generated successfully!');
-        await new Promise(resolve => setTimeout(resolve, 1000));
-      } catch (clientError) {
-        console.warn('Client-side PDF generation failed, trying server-side...', clientError);
-        setLoadingMessage('Generating PDF on server...');
-        
-        // Fallback to server-side generation
-        const pdfBlob = await generatePDF(resumeData);
-        const url = window.URL.createObjectURL(pdfBlob);
-        const a = document.createElement('a');
-        a.style.display = 'none';
-        a.href = url;
-        a.download = `${resumeData.personalInfo?.name || 'Resume'}.pdf`;
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
-      }
+      const filename = `${resumeData.personalInfo?.name || resumeTitle || 'Resume'}.pdf`;
+      await generatePDFFromPreview('resume-preview-for-pdf', filename);
+      setLoadingMessage('PDF generated successfully!');
+      await new Promise(resolve => setTimeout(resolve, 1000));
     } catch (error) {
       console.error('PDF generation error:', error);
       setError('Error generating PDF: ' + error.message);
@@ -228,15 +351,13 @@ function App() {
       setLoading(false);
       setLoadingMessage('');
     }
-  }, [resumeData]);
+  }, [resumeData, resumeTitle]);
 
   // Tab change handler
   const handleTabChange = useCallback((tab) => {
-    if (tab === 'edit' || tab === 'preview') {
-      if (!resumeData) {
-        setError('Please upload a resume first');
-        return;
-      }
+    if ((tab === 'edit' || tab === 'preview') && !resumeData) {
+      setError('Please upload a resume first');
+      return;
     }
     setActiveTab(tab);
   }, [resumeData]);
@@ -249,8 +370,10 @@ function App() {
     }
   }, [error]);
 
-  // Prevent default drag behaviors on document
+  // Prevent default drag behaviors
   useEffect(() => {
+    if (currentView !== 'upload') return;
+
     const preventDefaults = (e) => {
       e.preventDefault();
       e.stopPropagation();
@@ -275,8 +398,46 @@ function App() {
       });
       document.removeEventListener('drop', handleDocumentDrop, false);
     };
-  }, [activeTab, handleDrop]);
+  }, [currentView, activeTab, handleDrop]);
 
+  // Show loading spinner during auth check
+  if (authLoading) {
+    return (
+      <div className="loading-overlay">
+        <div className="loading-spinner"></div>
+        <div className="loading-text">Loading Resume Builder...</div>
+      </div>
+    );
+  }
+
+  // Show authentication screens
+  if (!isAuthenticated) {
+    return showRegister ? (
+      <Register 
+        onRegister={handleRegister}
+        onSwitchToLogin={() => setShowRegister(false)}
+      />
+    ) : (
+      <Login 
+        onLogin={handleLogin}
+        onSwitchToRegister={() => setShowRegister(true)}
+      />
+    );
+  }
+
+  // Show dashboard
+  if (currentView === 'dashboard') {
+    return (
+      <ResumeDashboard
+        user={user}
+        onCreateNew={handleCreateNew}
+        onEditResume={handleEditResume}
+        onLogout={handleLogout}
+      />
+    );
+  }
+
+  // Show main app interface
   return (
     <div className="app">
       {/* Error notification */}
@@ -291,39 +452,91 @@ function App() {
       {/* Header */}
       <header className="app-header">
         <div className="container">
-          <h1>
-            <FileText className="icon" /> 
-            Resume Builder Pro
-          </h1>
-          <p>Transform your resume into a professional masterpiece with AI-powered intelligence</p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <button 
+              onClick={handleBackToDashboard}
+              className="back-btn"
+              style={{
+                background: 'rgba(255, 255, 255, 0.2)',
+                border: 'none',
+                color: 'white',
+                padding: '0.5rem',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center'
+              }}
+            >
+              <ArrowLeft size={20} />
+            </button>
+            <div>
+              <h1>
+                <FileText className="icon" /> 
+                Resume Builder Pro
+              </h1>
+              <p>Transform your resume into a professional masterpiece</p>
+            </div>
+          </div>
+          
+          {resumeData && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+              <button
+                onClick={saveResume}
+                disabled={!resumeTitle.trim() || saveStatus === 'saving'}
+                style={{
+                  background: saveStatus === 'saved' ? '#27ae60' : 'rgba(255, 255, 255, 0.2)',
+                  border: 'none',
+                  color: 'white',
+                  padding: '0.75rem 1.5rem',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  opacity: !resumeTitle.trim() ? 0.6 : 1
+                }}
+              >
+                {saveStatus === 'saving' ? (
+                  <div className="loading-spinner small"></div>
+                ) : saveStatus === 'saved' ? (
+                  <CheckCircle size={16} />
+                ) : (
+                  <Save size={16} />
+                )}
+                {saveStatus === 'saving' ? 'Saving...' : saveStatus === 'saved' ? 'Saved!' : 'Save'}
+              </button>
+            </div>
+          )}
         </div>
       </header>
 
       {/* Navigation */}
-      <nav className="tab-nav">
-        <div className="container">
-          <button 
-            className={`tab ${activeTab === 'upload' ? 'active' : ''}`}
-            onClick={() => handleTabChange('upload')}
-          >
-            <Upload className="icon" /> Upload Resume
-          </button>
-          <button 
-            className={`tab ${activeTab === 'edit' ? 'active' : ''} ${!resumeData ? 'disabled' : ''}`}
-            onClick={() => handleTabChange('edit')}
-            disabled={!resumeData}
-          >
-            <Edit3 className="icon" /> Edit & Customize
-          </button>
-          <button 
-            className={`tab ${activeTab === 'preview' ? 'active' : ''} ${!resumeData ? 'disabled' : ''}`}
-            onClick={() => handleTabChange('preview')}
-            disabled={!resumeData}
-          >
-            <FileText className="icon" /> Preview & Download
-          </button>
-        </div>
-      </nav>
+      {currentView !== 'dashboard' && (
+        <nav className="tab-nav">
+          <div className="container">
+            <button 
+              className={`tab ${activeTab === 'upload' ? 'active' : ''}`}
+              onClick={() => handleTabChange('upload')}
+            >
+              <Upload className="icon" /> Upload Resume
+            </button>
+            <button 
+              className={`tab ${activeTab === 'edit' ? 'active' : ''} ${!resumeData ? 'disabled' : ''}`}
+              onClick={() => handleTabChange('edit')}
+              disabled={!resumeData}
+            >
+              <Edit3 className="icon" /> Edit & Customize
+            </button>
+            <button 
+              className={`tab ${activeTab === 'preview' ? 'active' : ''} ${!resumeData ? 'disabled' : ''}`}
+              onClick={() => handleTabChange('preview')}
+              disabled={!resumeData}
+            >
+              <FileText className="icon" /> Preview & Download
+            </button>
+          </div>
+        </nav>
+      )}
 
       {/* Main Content */}
       <main className="main-content">
@@ -382,7 +595,6 @@ function App() {
                 </div>
               </div>
               
-              {/* File Preview */}
               {selectedFile && !isProcessing && !uploadSuccess && (
                 <div className="file-preview">
                   <div className="file-info">
@@ -402,6 +614,33 @@ function App() {
           {/* Edit Tab */}
           {activeTab === 'edit' && resumeData && (
             <div className="edit-section">
+              {/* Resume Title and Description */}
+              <div className="section">
+                <h3><FileText className="icon" /> Resume Details</h3>
+                <div className="form-row">
+                  <div className="form-group floating">
+                    <input 
+                      type="text" 
+                      value={resumeTitle}
+                      onChange={(e) => setResumeTitle(e.target.value)}
+                      placeholder=" "
+                      id="resume-title"
+                    />
+                    <label htmlFor="resume-title">Resume Title (e.g., "Software Engineer - Google")</label>
+                  </div>
+                  <div className="form-group floating">
+                    <input 
+                      type="text" 
+                      value={resumeDescription}
+                      onChange={(e) => setResumeDescription(e.target.value)}
+                      placeholder=" "
+                      id="resume-description"
+                    />
+                    <label htmlFor="resume-description">Description (Optional)</label>
+                  </div>
+                </div>
+              </div>
+
               <div className="edit-grid">
                 {/* Edit Panel */}
                 <div className="edit-panel">
@@ -671,7 +910,7 @@ function App() {
                   </div>
                 </div>
 
-                {/* Enhanced Preview Panel with Professional ResumePreview */}
+                {/* Preview Panel */}
                 <div className="preview-panel">
                   <h3>Live Preview</h3>
                   <div className="live-preview-container">
@@ -690,7 +929,7 @@ function App() {
                   disabled={loading}
                 >
                   <Download className="icon" /> 
-                  {loading ? 'Generating PDF...' : 'Download PDF (Live Preview)'}
+                  {loading ? 'Generating PDF...' : 'Download PDF'}
                 </button>
               </div>
             </div>
@@ -711,7 +950,7 @@ function App() {
                   disabled={loading}
                 >
                   <Download className="icon" /> 
-                  {loading ? 'Generating PDF...' : 'Download PDF (Live Preview)'}
+                  {loading ? 'Generating PDF...' : 'Download PDF'}
                 </button>
               </div>
             </div>
@@ -719,27 +958,29 @@ function App() {
         </div>
       </main>
 
-      {/* Enhanced Loading Overlay */}
+      {/* Loading Overlay */}
       {loading && (
         <div className="loading-overlay">
           <div className="loading-spinner"></div>
           <div className="loading-text">{loadingMessage || 'Processing...'}</div>
-          <div className="loading-subtext">Please wait while we transform your resume into a masterpiece</div>
+          <div className="loading-subtext">Please wait while we process your request</div>
           
-          {/* Progress Bar */}
-          <div className="progress-container">
-            <div className="progress-bar">
-              <div className="progress-fill" style={{ width: `${uploadProgress}%` }}></div>
-            </div>
-          </div>
-          
-          {/* Processing Steps */}
-          <div className="processing-steps">
-            <div className={`step-indicator ${uploadProgress >= 25 ? 'completed' : uploadProgress > 0 ? 'active' : ''}`}></div>
-            <div className={`step-indicator ${uploadProgress >= 50 ? 'completed' : uploadProgress >= 25 ? 'active' : ''}`}></div>
-            <div className={`step-indicator ${uploadProgress >= 75 ? 'completed' : uploadProgress >= 50 ? 'active' : ''}`}></div>
-            <div className={`step-indicator ${uploadProgress >= 100 ? 'completed' : uploadProgress >= 75 ? 'active' : ''}`}></div>
-          </div>
+          {uploadProgress > 0 && (
+            <>
+              <div className="progress-container">
+                <div className="progress-bar">
+                  <div className="progress-fill" style={{ width: `${uploadProgress}%` }}></div>
+                </div>
+              </div>
+              
+              <div className="processing-steps">
+                <div className={`step-indicator ${uploadProgress >= 25 ? 'completed' : uploadProgress > 0 ? 'active' : ''}`}></div>
+                <div className={`step-indicator ${uploadProgress >= 50 ? 'completed' : uploadProgress >= 25 ? 'active' : ''}`}></div>
+                <div className={`step-indicator ${uploadProgress >= 75 ? 'completed' : uploadProgress >= 50 ? 'active' : ''}`}></div>
+                <div className={`step-indicator ${uploadProgress >= 100 ? 'completed' : uploadProgress >= 75 ? 'active' : ''}`}></div>
+              </div>
+            </>
+          )}
         </div>
       )}
     </div>

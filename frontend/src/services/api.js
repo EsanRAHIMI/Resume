@@ -1,31 +1,172 @@
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
+import axios from 'axios';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5001/api';
+
+// Create axios instance with default config
+const api = axios.create({
+  baseURL: API_BASE_URL,
+  withCredentials: true,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+
+// Token management
+const getToken = () => localStorage.getItem('resumeBuilderToken');
+const setToken = (token) => localStorage.setItem('resumeBuilderToken', token);
+const removeToken = () => localStorage.removeItem('resumeBuilderToken');
+
+// Request interceptor to add auth token
+api.interceptors.request.use(
+  (config) => {
+    const token = getToken();
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
+
+// Response interceptor to handle auth errors
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      removeToken();
+      // Optionally redirect to login
+      window.location.href = '/login';
+    }
+    return Promise.reject(error);
+  }
+);
+
+// ================================
+// AUTHENTICATION FUNCTIONS
+// ================================
+
+export const authAPI = {
+  register: async (userData) => {
+    const response = await api.post('/auth/register', userData);
+    if (response.data.token) {
+      setToken(response.data.token);
+    }
+    return response.data;
+  },
+
+  login: async (credentials) => {
+    const response = await api.post('/auth/login', credentials);
+    if (response.data.token) {
+      setToken(response.data.token);
+    }
+    return response.data;
+  },
+
+  logout: async () => {
+    try {
+      await api.post('/auth/logout');
+    } finally {
+      removeToken();
+    }
+  },
+
+  getCurrentUser: async () => {
+    const response = await api.get('/auth/me');
+    return response.data;
+  },
+
+  updateProfile: async (profileData) => {
+    const response = await api.put('/auth/profile', profileData);
+    return response.data;
+  },
+
+  checkAuth: async () => {
+    try {
+      const response = await api.get('/auth/check');
+      return response.data;
+    } catch (error) {
+      return { authenticated: false };
+    }
+  }
+};
+
+// ================================
+// RESUME MANAGEMENT FUNCTIONS
+// ================================
+
+export const resumeAPI = {
+  // Get all resumes for current user
+  getResumes: async (page = 1, limit = 10) => {
+    const response = await api.get(`/resume?page=${page}&limit=${limit}`);
+    return response.data;
+  },
+
+  // Get specific resume
+  getResume: async (id) => {
+    const response = await api.get(`/resume/${id}`);
+    return response.data;
+  },
+
+  // Create new resume
+  createResume: async (resumeData) => {
+    const response = await api.post('/resume', resumeData);
+    return response.data;
+  },
+
+  // Update resume
+  updateResume: async (id, resumeData) => {
+    const response = await api.put(`/resume/${id}`, resumeData);
+    return response.data;
+  },
+
+  // Delete resume
+  deleteResume: async (id) => {
+    const response = await api.delete(`/resume/${id}`);
+    return response.data;
+  },
+
+  // Duplicate resume
+  duplicateResume: async (id) => {
+    const response = await api.post(`/resume/${id}/duplicate`);
+    return response.data;
+  },
+
+  // Search resumes
+  searchResumes: async (query) => {
+    const response = await api.get(`/resume/search?q=${encodeURIComponent(query)}`);
+    return response.data;
+  }
+};
+
+// ================================
+// FILE UPLOAD FUNCTIONS
+// ================================
 
 export const uploadResume = async (file) => {
   try {
     const formData = new FormData();
     formData.append('resume', file);
 
-    const response = await fetch(`${API_BASE_URL}/upload`, {
-      method: 'POST',
-      body: formData,
+    const response = await api.post('/upload', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
     });
 
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.message || 'Failed to upload resume');
-    }
-
-    return response.json();
+    return response.data;
   } catch (error) {
     console.error('Upload error:', error);
     throw error;
   }
 };
 
-// New function: Generate PDF from Live Preview
+// ================================
+// PDF GENERATION FUNCTIONS
+// ================================
+
+// Generate PDF from Live Preview
 export const generatePDFFromPreview = async (previewElementId, filename = 'resume.pdf') => {
   try {
     // Get the preview element
@@ -90,63 +231,19 @@ export const generatePDFFromPreview = async (previewElementId, filename = 'resum
   }
 };
 
-// Backup function: Server-side PDF generation (fallback)
-export const generatePDF = async (resumeData) => {
-  try {
-    const response = await fetch(`${API_BASE_URL}/pdf/generate`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(resumeData),
-    });
+// ================================
+// UTILITY FUNCTIONS
+// ================================
 
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.message || 'Failed to generate PDF');
-    }
-
-    return response.blob();
-  } catch (error) {
-    console.error('PDF generation error:', error);
-    throw error;
-  }
+export const isAuthenticated = () => {
+  return !!getToken();
 };
 
-export const saveResume = async (resumeData) => {
-  try {
-    const response = await fetch(`${API_BASE_URL}/resume/save`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(resumeData),
-    });
+export const getAuthToken = getToken;
+export const setAuthToken = setToken;
+export const clearAuthToken = removeToken;
 
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.message || 'Failed to save resume');
-    }
-
-    return response.json();
-  } catch (error) {
-    console.error('Save error:', error);
-    throw error;
-  }
-};
-
-export const getResumes = async () => {
-  try {
-    const response = await fetch(`${API_BASE_URL}/resume/list`);
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.message || 'Failed to fetch resumes');
-    }
-
-    return response.json();
-  } catch (error) {
-    console.error('Fetch resumes error:', error);
-    throw error;
-  }
-};
+// Backward compatibility exports
+export const generatePDF = generatePDFFromPreview;
+export const saveResume = resumeAPI.createResume;
+export const getResumes = resumeAPI.getResumes;
