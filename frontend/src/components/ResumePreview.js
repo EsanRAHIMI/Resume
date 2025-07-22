@@ -1,5 +1,6 @@
 import React from 'react';
 import { Phone, Mail, MapPin, Globe, User, Briefcase, GraduationCap } from 'lucide-react';
+import { photoAPI } from '../services/api';
 import './ResumePreview.css';
 
 const ResumePreview = ({ resumeData }) => {
@@ -10,16 +11,35 @@ const ResumePreview = ({ resumeData }) => {
   // Core competencies (first 10 skills)
   const coreCompetencies = skills.slice(0, 10);
 
+  // Photo handling
+  const showPhoto = personalInfo.showPhoto !== false; // Default to true
+  const hasPhoto = personalInfo.photo?.filename;
+  const photoUrl = hasPhoto ? photoAPI.getPhotoUrl(personalInfo.photo.filename) : null;
+
   return (
     <div className="resume-preview-container">
       {/* Header Section */}
-      <div className="resume-header">
+      <div className={`resume-header ${!showPhoto ? 'no-photo' : ''}`}>
         <div className="profile-section">
-          <div className="profile-photo">
-            <div className="photo-placeholder">
-              {personalInfo.name ? personalInfo.name.split(' ').map(n => n[0]).join('').toUpperCase() : 'ER'}
+          {showPhoto && (
+            <div className="profile-photo">
+              {hasPhoto && photoUrl ? (
+                <img 
+                  src={photoUrl} 
+                  alt={personalInfo.name || 'Profile'} 
+                  onError={(e) => {
+                    // Fallback to placeholder if image fails to load
+                    e.target.style.display = 'none';
+                    e.target.nextSibling.style.display = 'flex';
+                  }}
+                />
+              ) : (
+                <div className="photo-placeholder">
+                  {personalInfo.name ? personalInfo.name.split(' ').map(n => n[0]).join('').toUpperCase() : 'ER'}
+                </div>
+              )}
             </div>
-          </div>
+          )}
           <div className="header-content">
             <h1 className="name">{personalInfo.name || 'EHSAN RAHIMI'}</h1>
             <h2 className="title">{personalInfo.title || 'CHIEF ARTIFICIAL INTELLIGENCE OFFICER (CAIO)'}</h2>

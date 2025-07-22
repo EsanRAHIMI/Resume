@@ -24,7 +24,22 @@ const resumeSchema = new mongoose.Schema({
     phone: String,
     location: String,
     website: String,
-    summary: String
+    summary: String,
+    // Photo fields
+    photo: {
+      filename: String,
+      originalName: String,
+      mimeType: String,
+      size: Number,
+      uploadDate: {
+        type: Date,
+        default: Date.now
+      }
+    },
+    showPhoto: {
+      type: Boolean,
+      default: true
+    }
   },
   experience: [{
     company: String,

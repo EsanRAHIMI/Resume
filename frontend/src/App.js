@@ -20,6 +20,7 @@ import {
 import './App.css';
 import { uploadResume, generatePDFFromPreview, authAPI, resumeAPI } from './services/api';
 import ResumePreview from './components/ResumePreview';
+import PhotoUpload from './components/PhotoUpload';
 import Login from './components/Login';
 import Register from './components/Register';
 import ResumeDashboard from './components/ResumeDashboard';
@@ -110,8 +111,8 @@ function App() {
       const response = await resumeAPI.getResume(resume._id);
       setResumeData(response.resume);
       setCurrentResumeId(resume._id);
-      setResumeTitle(resume.title);
-      setResumeDescription(resume.description || '');
+      setResumeTitle(response.resume.title);
+      setResumeDescription(response.resume.description || '');
       setCurrentView('edit');
       setActiveTab('edit');
     } catch (error) {
@@ -182,7 +183,16 @@ function App() {
       
       await new Promise(resolve => setTimeout(resolve, 500));
       
-      setResumeData(result.data);
+      // Initialize with default photo settings
+      const resultData = {
+        ...result.data,
+        personalInfo: {
+          ...result.data.personalInfo,
+          showPhoto: true // Default to showing photo
+        }
+      };
+      
+      setResumeData(resultData);
       setUploadSuccess(true);
       setActiveTab('edit');
       
@@ -202,6 +212,28 @@ function App() {
       setUploadProgress(0);
       setProcessingStep('');
     }
+  }, []);
+
+  // Photo upload handler
+  const handlePhotoUpdate = useCallback((photoData) => {
+    setResumeData(prev => ({
+      ...prev,
+      personalInfo: {
+        ...prev.personalInfo,
+        photo: photoData
+      }
+    }));
+  }, []);
+
+  // Photo display toggle handler
+  const handleShowPhotoToggle = useCallback((showPhoto) => {
+    setResumeData(prev => ({
+      ...prev,
+      personalInfo: {
+        ...prev.personalInfo,
+        showPhoto
+      }
+    }));
   }, []);
 
   // Save resume function
@@ -647,6 +679,15 @@ function App() {
                   {/* Personal Information */}
                   <div className="section">
                     <h3><User className="icon" /> Personal Information</h3>
+                    
+                    {/* Photo Upload */}
+                    <PhotoUpload
+                      currentPhoto={resumeData.personalInfo?.photo}
+                      showPhoto={resumeData.personalInfo?.showPhoto !== false}
+                      onPhotoUpdate={handlePhotoUpdate}
+                      onShowPhotoToggle={handleShowPhotoToggle}
+                    />
+                    
                     <div className="form-group floating">
                       <input 
                         type="text" 
@@ -913,6 +954,19 @@ function App() {
                 {/* Preview Panel */}
                 <div className="preview-panel">
                   <h3>Live Preview</h3>
+                  
+                  {/* Download button */}
+                  <div className="preview-action-bar">
+                    <button 
+                      className="download-btn" 
+                      onClick={generatePDFDownload}
+                      disabled={loading}
+                    >
+                      <Download className="icon" /> 
+                      {loading ? 'Generating PDF...' : 'Download PDF'}
+                    </button>
+                  </div>
+                  
                   <div className="live-preview-container">
                     <div id="resume-preview-for-pdf">
                       <ResumePreview resumeData={resumeData} />
@@ -920,30 +974,15 @@ function App() {
                   </div>
                 </div>
               </div>
-
-              {/* Action Bar */}
-              <div className="action-bar">
-                <button 
-                  className="download-btn" 
-                  onClick={generatePDFDownload}
-                  disabled={loading}
-                >
-                  <Download className="icon" /> 
-                  {loading ? 'Generating PDF...' : 'Download PDF'}
-                </button>
-              </div>
             </div>
           )}
 
           {/* Preview Tab */}
           {activeTab === 'preview' && resumeData && (
             <div className="preview-section">
-              <div className="preview-container">
-                <div id="resume-preview-for-pdf-standalone">
-                  <ResumePreview resumeData={resumeData} />
-                </div>
-              </div>
-              <div className="action-bar">
+              
+              {/* Download button */}
+              <div className="preview-action-bar">
                 <button 
                   className="download-btn" 
                   onClick={generatePDFDownload}
@@ -952,6 +991,12 @@ function App() {
                   <Download className="icon" /> 
                   {loading ? 'Generating PDF...' : 'Download PDF'}
                 </button>
+              </div>
+              
+              <div className="preview-container">
+                <div id="resume-preview-for-pdf">
+                  <ResumePreview resumeData={resumeData} />
+                </div>
               </div>
             </div>
           )}

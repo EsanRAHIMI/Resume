@@ -6,6 +6,7 @@ const rateLimit = require('express-rate-limit');
 const mongoose = require('mongoose');
 const session = require('express-session');
 const MongoStore = require('connect-mongo');
+const path = require('path');
 require('dotenv').config();
 
 // Import routes
@@ -63,6 +64,9 @@ app.use(limiter);
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
+// Serve static files for photos
+app.use('/uploads/photos', express.static(path.join(__dirname, '../uploads/photos')));
+
 // Initialize the app asynchronously
 async function initializeApp() {
   try {
@@ -99,7 +103,7 @@ async function initializeApp() {
         status: 'OK', 
         timestamp: new Date().toISOString(),
         version: '2.0.0',
-        features: ['authentication', 'resume-management', 'file-upload']
+        features: ['authentication', 'resume-management', 'file-upload', 'photo-upload']
       });
     });
 
@@ -138,7 +142,10 @@ async function initializeApp() {
           search: 'GET /api/resume/search?q=query'
         },
         upload: {
-          parseResume: 'POST /api/upload'
+          parseResume: 'POST /api/upload',
+          uploadPhoto: 'POST /api/upload/photo',
+          getPhoto: 'GET /api/upload/photo/:filename',
+          deletePhoto: 'DELETE /api/upload/photo/:filename'
         }
       });
     });
@@ -180,6 +187,14 @@ async function initializeApp() {
         });
       }
       
+      // Multer errors
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({
+          error: 'File too large',
+          message: 'File size must be less than 10MB'
+        });
+      }
+      
       // Default error
       res.status(err.status || 500).json({ 
         error: process.env.NODE_ENV === 'production' 
@@ -195,6 +210,7 @@ async function initializeApp() {
       console.log(`🚀 Resume Builder API v2.0 running on port ${PORT}`);
       console.log(`📚 API Documentation: http://localhost:${PORT}/api`);
       console.log(`💚 Health Check: http://localhost:${PORT}/health`);
+      console.log(`📸 Photo uploads available at: http://localhost:${PORT}/uploads/photos/`);
     });
 
   } catch (err) {
