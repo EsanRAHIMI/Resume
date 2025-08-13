@@ -1,225 +1,346 @@
-// /backend/src/app.js
-const express = require('express');
-const cors = require('cors');
-const helmet = require('helmet');
-const rateLimit = require('express-rate-limit');
-const mongoose = require('mongoose');
-const session = require('express-session');
-const MongoStore = require('connect-mongo');
-const path = require('path');
-require('dotenv').config();
+import html2canvas from 'html2canvas';
+import jsPDF from 'jspdf';
+import axios from 'axios';
 
-// Import routes
-const uploadRoutes = require('./routes/upload');
-const resumeRoutes = require('./routes/resume');
-const authRoutes = require('./routes/auth');
-const codeRoutes = require('./routes/code'); //Do not change this line at all and there is no need to create the file.
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5001/api';
+const BASE_URL = process.env.REACT_APP_BASE_URL || 'http://localhost:5001';
 
-const app = express();
-
-// Security middleware
-app.use(helmet({
-  crossOriginEmbedderPolicy: false,
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
-      scriptSrc: ["'self'"],
-      imgSrc: ["'self'", "data:", "https:"],
-    },
+// Create axios instance with default config
+const api = axios.create({
+  baseURL: API_BASE_URL,
+  withCredentials: true,
+  headers: {
+    'Content-Type': 'application/json',
   },
-}));
-
-app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
-}));
-
-// Session middleware for code browser authentication
-app.use(session({
-  secret: process.env.SESSION_SECRET || 'your-secret-key-here',
-  resave: false,
-  saveUninitialized: false,
-  cookie: {
-    secure: process.env.NODE_ENV === 'production',
-    maxAge: 24 * 60 * 60 * 1000 // 24 hours
-  }
-}));
-
-// Rate limiting
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 200, // limit each IP to 200 requests per windowMs
-  message: {
-    error: 'Too many requests from this IP, please try again later.'
-  },
-  standardHeaders: true,
-  legacyHeaders: false,
 });
-app.use(limiter);
 
-// Body parsing middleware
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+// Token management
+const getToken = () => localStorage.getItem('resumeBuilderToken');
+const setToken = (token) => localStorage.setItem('resumeBuilderToken', token);
+const removeToken = () => localStorage.removeItem('resumeBuilderToken');
 
-// Serve static files for photos
-app.use('/uploads/photos', express.static(path.join(__dirname, '../uploads/photos')));
+// Request interceptor to add auth token
+api.interceptors.request.use(
+  (config) => {
+    const token = getToken();
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
 
-// Initialize the app asynchronously
-async function initializeApp() {
-  try {
-    // Connect to MongoDB first
-    await mongoose.connect(process.env.MONGO_URI);
-    console.log('✅ MongoDB connected');
-    
-    // Session middleware (after DB connection)
-    app.use(session({
-      secret: process.env.SESSION_SECRET || 'your-secret-key-here',
-      resave: false,
-      saveUninitialized: false,
-      store: MongoStore.create({
-        mongoUrl: process.env.MONGO_URI,
-        touchAfter: 24 * 3600 // lazy session update
-      }),
-      cookie: {
-        secure: process.env.NODE_ENV === 'production',
-        httpOnly: true,
-        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax'
-      }
-    }));
-
-    // API Routes (after session middleware is set up)
-    app.use('/api/auth', authRoutes);
-    app.use('/api/upload', uploadRoutes);
-    app.use('/api/resume', resumeRoutes);
-    app.use('/api/code', codeRoutes);
-
-    // Health check
-    app.get('/health', (req, res) => {
-      res.json({ 
-        status: 'OK', 
-        timestamp: new Date().toISOString(),
-        version: '2.0.0',
-        features: ['authentication', 'resume-management', 'file-upload', 'photo-upload']
-      });
-    });
-
-    // Root route
-    app.get('/', (req, res) => {
-      res.json({ 
-        message: 'Resume Builder API v2.0 - User Management & Resume Storage',
-        endpoints: {
-          auth: '/api/auth',
-          upload: '/api/upload',
-          resumes: '/api/resume',
-          code: '/api/code'
-        },
-        documentation: 'https://EhsanRahimi.com/resume'
-      });
-    });
-
-    // API documentation endpoint
-    app.get('/api', (req, res) => {
-      res.json({
-        message: 'Resume Builder API v2.0',
-        auth: {
-          register: 'POST /api/auth/register',
-          login: 'POST /api/auth/login',
-          logout: 'POST /api/auth/logout',
-          profile: 'GET /api/auth/me',
-          updateProfile: 'PUT /api/auth/profile'
-        },
-        resumes: {
-          list: 'GET /api/resume',
-          get: 'GET /api/resume/:id',
-          create: 'POST /api/resume',
-          update: 'PUT /api/resume/:id',
-          delete: 'DELETE /api/resume/:id',
-          duplicate: 'POST /api/resume/:id/duplicate',
-          search: 'GET /api/resume/search?q=query'
-        },
-        upload: {
-          parseResume: 'POST /api/upload',
-          uploadPhoto: 'POST /api/upload/photo',
-          getPhoto: 'GET /api/upload/photo/:filename',
-          deletePhoto: 'DELETE /api/upload/photo/:filename'
-        }
-      });
-    });
-
-    // 404 handler
-    app.use('*', (req, res) => {
-      res.status(404).json({
-        error: 'Route not found',
-        message: `The route ${req.originalUrl} does not exist`
-      });
-    });
-
-    // Global error handling middleware
-    app.use((err, req, res, next) => {
-      console.error('Global error handler:', err.stack);
-      
-      // Mongoose validation error
-      if (err.name === 'ValidationError') {
-        const errors = Object.values(err.errors).map(e => e.message);
-        return res.status(400).json({
-          error: 'Validation Error',
-          details: errors
-        });
-      }
-      
-      // Mongoose duplicate key error
-      if (err.code === 11000) {
-        const field = Object.keys(err.keyValue)[0];
-        return res.status(400).json({
-          error: `Duplicate ${field}`,
-          message: `${field} already exists`
-        });
-      }
-      
-      // JWT error
-      if (err.name === 'JsonWebTokenError') {
-        return res.status(401).json({
-          error: 'Invalid token'
-        });
-      }
-      
-      // Multer errors
-      if (err.code === 'LIMIT_FILE_SIZE') {
-        return res.status(400).json({
-          error: 'File too large',
-          message: 'File size must be less than 10MB'
-        });
-      }
-      
-      // Default error
-      res.status(err.status || 500).json({ 
-        error: process.env.NODE_ENV === 'production' 
-          ? 'Something went wrong!' 
-          : err.message,
-        ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
-      });
-    });
-
-    // Start server
-    const PORT = process.env.PORT || 5001;
-    app.listen(PORT, () => {
-      console.log(`🚀 Resume Builder API v2.0 running on port ${PORT}`);
-      console.log(`📚 API Documentation: http://localhost:${PORT}/api`);
-      console.log(`💚 Health Check: http://localhost:${PORT}/health`);
-      console.log(`📸 Photo uploads available at: http://localhost:${PORT}/uploads/photos/`);
-    });
-
-  } catch (err) {
-    console.error('❌ Application initialization error:', err);
-    process.exit(1);
+// Response interceptor to handle auth errors
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      removeToken();
+    }
+    return Promise.reject(error);
   }
-}
+);
 
-// Initialize the application
-initializeApp();
+// ================================
+// AUTHENTICATION FUNCTIONS
+// ================================
 
-module.exports = app;
+export const authAPI = {
+  register: async (userData) => {
+    const response = await api.post('/auth/register', userData);
+    if (response.data.token) {
+      setToken(response.data.token);
+    }
+    return response.data;
+  },
+
+  login: async (credentials) => {
+    const response = await api.post('/auth/login', credentials);
+    if (response.data.token) {
+      setToken(response.data.token);
+    }
+    return response.data;
+  },
+
+  logout: async () => {
+    try {
+      await api.post('/auth/logout');
+    } finally {
+      removeToken();
+    }
+  },
+
+  getCurrentUser: async () => {
+    const response = await api.get('/auth/me');
+    return response.data;
+  },
+
+  updateProfile: async (profileData) => {
+    const response = await api.put('/auth/profile', profileData);
+    return response.data;
+  },
+
+  checkAuth: async () => {
+    try {
+      const response = await api.get('/auth/check');
+      return response.data;
+    } catch (error) {
+      return { authenticated: false };
+    }
+  }
+};
+
+// ================================
+// PHOTO UPLOAD FUNCTIONS - CLEAN VERSION
+// ================================
+
+export const photoAPI = {
+  uploadPhoto: async (file) => {
+    try {
+      console.log('📸 Starting photo upload:', file.name, file.type, file.size);
+      
+      const formData = new FormData();
+      formData.append('photo', file);
+
+      const response = await api.post('/upload/photo', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+        timeout: 30000, // 30 second timeout
+      });
+
+      console.log('📸 Photo upload response:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('❌ Photo upload error:', error);
+      if (error.code === 'ECONNABORTED') {
+        throw new Error('آپلود عکس به دلیل اتمام زمان با مشکل مواجه شد. لطفا دوباره تلاش کنید.');
+      }
+      throw error;
+    }
+  },
+
+  deletePhoto: async (filename) => {
+    try {
+      console.log('🗑️ Deleting photo:', filename);
+      const response = await api.delete(`/upload/photo/${filename}`);
+      console.log('🗑️ Photo delete response:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('❌ Photo delete error:', error);
+      throw error;
+    }
+  },
+
+  // ✅ بهبود یافته: dynamic URL generation
+  getPhotoUrl: (filename) => {
+    if (!filename) {
+      console.log('📸 No filename provided for photo URL');
+      return null;
+    }
+    
+    // چندین URL امتحان می‌کنیم
+    const possibleUrls = [
+      `${BASE_URL}/uploads/photos/${filename}`,
+      `http://localhost:5001/uploads/photos/${filename}`,
+      `http://127.0.0.1:5001/uploads/photos/${filename}`
+    ];
+    
+    const photoUrl = possibleUrls[0]; // اولی را به عنوان پیش‌فرض انتخاب می‌کنیم
+    console.log('📸 Generated photo URL:', photoUrl);
+    console.log('📸 All possible URLs:', possibleUrls);
+    
+    return photoUrl;
+  },
+
+  // ✅ تست کردن دسترسی به URL عکس
+  testPhotoUrl: async (url) => {
+    try {
+      console.log('📸 Testing photo URL:', url);
+      const response = await fetch(url, { 
+        method: 'HEAD',
+        mode: 'cors',
+        cache: 'no-cache'
+      });
+      console.log('📸 Photo URL test result:', url, 'Status:', response.status, 'OK:', response.ok);
+      return response.ok;
+    } catch (error) {
+      console.error('📸 Photo URL test failed:', url, error);
+      return false;
+    }
+  },
+
+  // ✅ تست چندگانه URL ها
+  findWorkingPhotoUrl: async (filename) => {
+    if (!filename) return null;
+    
+    const possibleUrls = [
+      `${BASE_URL}/uploads/photos/${filename}`,
+      `http://localhost:5001/uploads/photos/${filename}`,
+      `http://127.0.0.1:5001/uploads/photos/${filename}`
+    ];
+    
+    for (const url of possibleUrls) {
+      const isWorking = await photoAPI.testPhotoUrl(url);
+      if (isWorking) {
+        console.log('✅ Working photo URL found:', url);
+        return url;
+      }
+    }
+    
+    console.log('❌ No working photo URL found for:', filename);
+    return null;
+  },
+
+  // ✅ بررسی وضعیت سرور
+  checkPhotoServerStatus: async () => {
+    try {
+      const response = await fetch(`${BASE_URL}/test-photos`, {
+        method: 'GET',
+        mode: 'cors'
+      });
+      const data = await response.json();
+      console.log('📸 Photo server status:', data);
+      return data;
+    } catch (error) {
+      console.error('❌ Photo server status check failed:', error);
+      return null;
+    }
+  }
+};
+
+// ================================
+// RESUME MANAGEMENT FUNCTIONS
+// ================================
+
+export const resumeAPI = {
+  getResumes: async (page = 1, limit = 10) => {
+    const response = await api.get(`/resume?page=${page}&limit=${limit}`);
+    return response.data;
+  },
+
+  getResume: async (id) => {
+    const response = await api.get(`/resume/${id}`);
+    return response.data;
+  },
+
+  createResume: async (resumeData) => {
+    const response = await api.post('/resume', resumeData);
+    return response.data;
+  },
+
+  updateResume: async (id, resumeData) => {
+    const response = await api.put(`/resume/${id}`, resumeData);
+    return response.data;
+  },
+
+  deleteResume: async (id) => {
+    const response = await api.delete(`/resume/${id}`);
+    return response.data;
+  },
+
+  duplicateResume: async (id) => {
+    const response = await api.post(`/resume/${id}/duplicate`);
+    return response.data;
+  },
+
+  searchResumes: async (query) => {
+    const response = await api.get(`/resume/search?q=${encodeURIComponent(query)}`);
+    return response.data;
+  }
+};
+
+// ================================
+// FILE UPLOAD FUNCTIONS
+// ================================
+
+export const uploadResume = async (file) => {
+  try {
+    const formData = new FormData();
+    formData.append('resume', file);
+
+    const response = await api.post('/upload', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+
+    return response.data;
+  } catch (error) {
+    console.error('Upload error:', error);
+    throw error;
+  }
+};
+
+// ================================
+// PDF GENERATION FUNCTIONS
+// ================================
+
+export const generatePDFFromPreview = async (previewElementId, filename = 'resume.pdf') => {
+  try {
+    const element = document.getElementById(previewElementId);
+    if (!element) {
+      throw new Error('Preview element not found');
+    }
+
+    const clone = element.cloneNode(true);
+    clone.style.position = 'absolute';
+    clone.style.left = '-9999px';
+    clone.style.top = '0';
+    clone.style.transform = 'scale(1)';
+    clone.style.width = '210mm';
+    clone.style.height = 'auto';
+    clone.style.backgroundColor = 'white';
+    
+    document.body.appendChild(clone);
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    const canvas = await html2canvas(clone, {
+      scale: 2,
+      useCORS: true,
+      allowTaint: true,
+      backgroundColor: '#ffffff',
+      width: 794,
+      height: 1123,
+      scrollX: 0,
+      scrollY: 0
+    });
+
+    document.body.removeChild(clone);
+
+    const imgData = canvas.toDataURL('image/png');
+    const pdf = new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: 'a4'
+    });
+
+    const pdfWidth = 210;
+    const pdfHeight = 297;
+    
+    pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+    pdf.save(filename);
+    
+    return true;
+  } catch (error) {
+    console.error('PDF generation error:', error);
+    throw error;
+  }
+};
+
+// ================================
+// UTILITY FUNCTIONS
+// ================================
+
+export const isAuthenticated = () => {
+  return !!getToken();
+};
+
+export const getAuthToken = getToken;
+export const setAuthToken = setToken;
+export const clearAuthToken = removeToken;
+
+export const generatePDF = generatePDFFromPreview;
+export const saveResume = resumeAPI.createResume;
+export const getResumes = resumeAPI.getResumes;

@@ -1,48 +1,231 @@
-import React from 'react';
-import { Phone, Mail, MapPin, Globe, User, Briefcase, GraduationCap } from 'lucide-react';
+// frontend/src/components/ResumePreview.js - Enhanced version
+import React, { useState, useEffect, useCallback } from 'react';
+import { Phone, Mail, MapPin, Globe, User, Briefcase, GraduationCap, AlertCircle, RefreshCw } from 'lucide-react';
 import { photoAPI } from '../services/api';
 import './ResumePreview.css';
 
 const ResumePreview = ({ resumeData }) => {
-  if (!resumeData) return null;
+  const [photoUrl, setPhotoUrl] = useState(null);
+  const [photoError, setPhotoError] = useState(false);
+  const [photoLoading, setPhotoLoading] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
 
-  const { personalInfo = {}, experience = [], education = [], skills = [], certifications = [], languages = ['English'] } = resumeData;
+  // Destructure resume data with defaults
+  const { 
+    personalInfo = {}, 
+    experience = [], 
+    education = [], 
+    skills = [], 
+    certifications = [], 
+    languages = ['English'] 
+  } = resumeData || {};
 
   // Core competencies (first 10 skills)
   const coreCompetencies = skills.slice(0, 10);
 
-  // Photo handling
-  const showPhoto = personalInfo.showPhoto !== false; // Default to true
+  // Photo handling logic
+  const showPhoto = personalInfo.showPhoto !== false;
   const hasPhoto = personalInfo.photo?.filename;
-  const photoUrl = hasPhoto ? photoAPI.getPhotoUrl(personalInfo.photo.filename) : null;
+  const shouldShowPhotoSection = showPhoto && hasPhoto;
+
+  // Enhanced photo loading with retry mechanism
+  const loadPhotoUrl = useCallback(async (forceReload = false) => {
+    if (!hasPhoto || !showPhoto) {
+      setPhotoUrl(null);
+      setPhotoError(false);
+      setPhotoLoading(false);
+      return;
+    }
+
+    // Skip if already loaded successfully and not forcing reload
+    if (!forceReload && photoUrl && !photoError) {
+      return;
+    }
+
+    setPhotoLoading(true);
+    setPhotoError(false);
+
+    try {
+      console.log('📸 ResumePreview: Loading photo for:', personalInfo.photo.filename);
+      
+      // Use enhanced photo API
+      const workingUrl = await photoAPI.findWorkingPhotoUrl(personalInfo.photo.filename);
+      
+      if (workingUrl) {
+        setPhotoUrl(workingUrl);
+        setRetryCount(0);
+        console.log('✅ ResumePreview: Photo URL loaded successfully:', workingUrl);
+      } else {
+        throw new Error('No working photo URL found');
+      }
+    } catch (error) {
+      console.error('❌ ResumePreview: Error loading photo:', error);
+      setPhotoError(true);
+      
+      // Set fallback URL
+      const fallbackUrl = photoAPI.getPhotoUrl(personalInfo.photo.filename);
+      setPhotoUrl(fallbackUrl);
+      
+      // Retry mechanism (max 3 retries)
+      if (retryCount < 3) {
+        setTimeout(() => {
+          setRetryCount(prev => prev + 1);
+          loadPhotoUrl(true);
+        }, 2000 * (retryCount + 1));
+      }
+    } finally {
+      setPhotoLoading(false);
+    }
+  }, [hasPhoto, showPhoto, personalInfo.photo?.filename, photoUrl, photoError, retryCount]);
+
+  // Load photo when component mounts or photo changes
+  useEffect(() => {
+    loadPhotoUrl();
+  }, [loadPhotoUrl]);
+
+  // Manual retry function
+  const handleRetryPhoto = () => {
+    setRetryCount(0);
+    loadPhotoUrl(true);
+  };
+
+  // Photo load success handler
+  const handlePhotoLoad = useCallback(() => {
+    console.log('✅ ResumePreview: Photo displayed successfully:', photoUrl);
+    setPhotoError(false);
+  }, [photoUrl]);
+
+  // Photo error handler
+  const handlePhotoError = useCallback((e) => {
+    console.error('❌ ResumePreview: Photo display error:', photoUrl);
+    setPhotoError(true);
+    
+    // Hide the broken image
+    if (e.target) {
+      e.target.style.display = 'none';
+    }
+  }, [photoUrl]);
+
+  // Return null if no resume data
+  if (!resumeData) {
+    return (
+      <div className="resume-preview-container" style={{ 
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'center', 
+        minHeight: '400px',
+        color: '#6c757d'
+      }}>
+        <p>No resume data available</p>
+      </div>
+    );
+  }
+
+  // Enhanced debug logging
+  console.log('ResumePreview - Enhanced Photo Debug:', {
+    showPhoto,
+    hasPhoto,
+    photoUrl,
+    photoError,
+    photoLoading,
+    retryCount,
+    shouldShowPhotoSection,
+    photoData: personalInfo.photo
+  });
 
   return (
     <div className="resume-preview-container">
       {/* Header Section */}
-      <div className={`resume-header ${!showPhoto ? 'no-photo' : ''}`}>
+      <div className={`resume-header ${!shouldShowPhotoSection ? 'no-photo' : ''}`}>
         <div className="profile-section">
-          {showPhoto && (
+          {shouldShowPhotoSection && (
             <div className="profile-photo">
-              {hasPhoto && photoUrl ? (
+              {/* Loading state */}
+              {photoLoading && (
+                <div className="photo-loading" style={{
+                  width: '100%',
+                  height: '100%',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  background: '#f8f9fa',
+                  color: '#6c757d',
+                  fontSize: '0.8rem'
+                }}>
+                  <div style={{
+                    width: '20px',
+                    height: '20px',
+                    border: '2px solid rgba(255, 255, 255, 0.3)',
+                    borderRadius: '50%',
+                    borderTopColor: 'white',
+                    animation: 'spin 1s linear infinite',
+                    marginBottom: '0.5rem'
+                  }}></div>
+                  Loading...
+                </div>
+              )}
+              
+              {/* Photo image */}
+              {photoUrl && !photoLoading && (
                 <img 
                   src={photoUrl} 
                   alt={personalInfo.name || 'Profile'} 
-                  onError={(e) => {
-                    // Fallback to placeholder if image fails to load
-                    e.target.style.display = 'none';
-                    e.target.nextSibling.style.display = 'flex';
+                  onLoad={handlePhotoLoad}
+                  onError={handlePhotoError}
+                  style={{
+                    display: photoError ? 'none' : 'block',
+                    width: '100%',
+                    height: '100%',
+                    objectFit: 'cover',
+                    objectPosition: 'center'
                   }}
                 />
-              ) : (
-                <div className="photo-placeholder">
-                  {personalInfo.name ? personalInfo.name.split(' ').map(n => n[0]).join('').toUpperCase() : 'ER'}
-                </div>
               )}
+              
+              {/* Placeholder or error state */}
+              <div 
+                className="photo-placeholder" 
+                style={{ 
+                  display: (photoUrl && !photoError && !photoLoading) ? 'none' : 'flex',
+                  width: '100%',
+                  height: '100%',
+                  background: photoError ? 'linear-gradient(135deg, #f8d7da 0%, #f5c6cb 100%)' : 'linear-gradient(135deg, #ecf0f1 0%, #bdc3c7 100%)',
+                  color: photoError ? '#721c24' : '#2c3e50',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: photoError ? '12px' : '28px',
+                  fontWeight: 'bold',
+                  textShadow: '0 1px 2px rgba(0,0,0,0.1)',
+                  flexDirection: 'column',
+                  cursor: photoError ? 'pointer' : 'default'
+                }}
+                onClick={photoError ? handleRetryPhoto : undefined}
+                title={photoError ? 'Click to retry loading photo' : undefined}
+              >
+                {photoError ? (
+                  <>
+                    <AlertCircle size={16} style={{ marginBottom: '4px' }} />
+                    <span style={{ fontSize: '8px', textAlign: 'center' }}>
+                      Photo Error
+                      <br />
+                      {retryCount > 0 && `(${retryCount}/3)`}
+                      <br />
+                      <RefreshCw size={8} style={{ marginTop: '2px' }} />
+                    </span>
+                  </>
+                ) : (
+                  personalInfo.name ? 
+                    personalInfo.name.split(' ').map(n => n[0]).join('').toUpperCase() : 
+                    'ER'
+                )}
+              </div>
             </div>
           )}
           <div className="header-content">
             <h1 className="name">{personalInfo.name || 'EHSAN RAHIMI'}</h1>
             <h2 className="title">{personalInfo.title || 'CHIEF ARTIFICIAL INTELLIGENCE OFFICER (CAIO)'}</h2>
+            <h3 className="subtitle">DIRECTOR OF TECHNOLOGY & DIGITAL TRANSFORMATION</h3>
           </div>
         </div>
         
@@ -271,6 +454,13 @@ const ResumePreview = ({ resumeData }) => {
           </section>
         </div>
       </div>
+
+      {/* CSS Animation for spinner */}
+      <style jsx>{`
+        @keyframes spin {
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
     </div>
   );
 };

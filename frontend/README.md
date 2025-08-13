@@ -26,6 +26,8 @@ cd backend
 # npm install
 npm run dev
 
+npm run init-db
+
 
 cd frontend
 # npm install
