@@ -9,6 +9,9 @@ const MongoStore = require('connect-mongo');
 const path = require('path');
 require('dotenv').config();
 
+// Import utility for file system
+const { ensureDirectories, checkDirectoryPermissions } = require('./utils/fileSystem');
+
 // Import routes
 const uploadRoutes = require('./routes/upload');
 const resumeRoutes = require('./routes/resume');
@@ -25,16 +28,22 @@ app.use(helmet({
       defaultSrc: ["'self'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
       scriptSrc: ["'self'"],
-      imgSrc: ["'self'", "data:", "https:"],
+      imgSrc: ["'self'", "data:", "https:", "http://localhost:5001"], // اضافه کردن localhost
     },
   },
 }));
 
+// ✅ CORS بهبود یافته برای حل مشکل عکس‌ها
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  origin: [
+    process.env.FRONTEND_URL || 'http://localhost:3000',
+    'http://localhost:3000',
+    'http://127.0.0.1:3000'
+  ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  exposedHeaders: ['Content-Length', 'Content-Type']
 }));
 
 // Session middleware for code browser authentication
@@ -64,12 +73,51 @@ app.use(limiter);
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Serve static files for photos
-app.use('/uploads/photos', express.static(path.join(__dirname, '../uploads/photos')));
-
 // Initialize the app asynchronously
 async function initializeApp() {
   try {
+    // ✅ اول پوشه‌ها را ایجاد می‌کنیم
+    console.log('🔄 Ensuring upload directories exist...');
+    await ensureDirectories();
+    
+    // ✅ بررسی مجوزهای پوشه‌ها
+    const uploadsPath = path.join(__dirname, '../uploads/photos');
+    const isWritable = await checkDirectoryPermissions(uploadsPath);
+    if (!isWritable) {
+      console.error('❌ Uploads directory is not writable!');
+      process.exit(1);
+    }
+    
+    // ✅ Serve static files for photos با header های مناسب
+    app.use('/uploads/photos', (req, res, next) => {
+      // اضافه کردن CORS headers برای عکس‌ها
+      res.header('Access-Control-Allow-Origin', '*');
+      res.header('Access-Control-Allow-Methods', 'GET');
+      res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+      res.header('Cache-Control', 'public, max-age=31536000'); // 1 year cache
+      next();
+    }, express.static(path.join(__dirname, '../uploads/photos')));
+    
+    // ✅ Route برای تست عکس‌ها
+    app.get('/test-photos', async (req, res) => {
+      const fs = require('fs').promises;
+      try {
+        const photosDir = path.join(__dirname, '../uploads/photos');
+        const files = await fs.readdir(photosDir);
+        res.json({
+          message: 'Photos directory accessible',
+          files: files,
+          directory: photosDir,
+          count: files.length
+        });
+      } catch (error) {
+        res.status(500).json({
+          error: 'Cannot access photos directory',
+          message: error.message
+        });
+      }
+    });
+
     // Connect to MongoDB first
     await mongoose.connect(process.env.MONGO_URI);
     console.log('✅ MongoDB connected');
@@ -103,7 +151,8 @@ async function initializeApp() {
         status: 'OK', 
         timestamp: new Date().toISOString(),
         version: '2.0.0',
-        features: ['authentication', 'resume-management', 'file-upload', 'photo-upload']
+        features: ['authentication', 'resume-management', 'file-upload', 'photo-upload'],
+        photosDirectory: path.join(__dirname, '../uploads/photos')
       });
     });
 
@@ -211,6 +260,7 @@ async function initializeApp() {
       console.log(`📚 API Documentation: http://localhost:${PORT}/api`);
       console.log(`💚 Health Check: http://localhost:${PORT}/health`);
       console.log(`📸 Photo uploads available at: http://localhost:${PORT}/uploads/photos/`);
+      console.log(`🧪 Test photos endpoint: http://localhost:${PORT}/test-photos`);
     });
 
   } catch (err) {

@@ -1,3 +1,4 @@
+// RESUME/frontend/src/components/ResumeDashboard.js
 import React, { useState, useEffect } from 'react';
 import { 
   FileText, 
@@ -6,14 +7,13 @@ import {
   Edit3, 
   Trash2, 
   Copy, 
-  Download,
   Calendar,
   User,
   Building2,
   AlertCircle,
   LogOut
 } from 'lucide-react';
-import { resumeAPI, authAPI, generatePDFFromPreview } from '../services/api';
+import { resumeAPI, authAPI } from '../services/api';
 
 const ResumeDashboard = ({ user, onCreateNew, onEditResume, onLogout }) => {
   const [resumes, setResumes] = useState([]);

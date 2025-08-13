@@ -1,0 +1,17 @@
+
+Photo Fix Report - 2025-07-24T13:58:25.911Z
+==============================================
+
+Directories:
+- Uploads: /Users/ehsanrahimi/Works/Resume/backend/uploads (exists: true)
+- Photos: /Users/ehsanrahimi/Works/Resume/backend/uploads/photos (exists: true)
+
+Files in photos directory: 4
+
+Next steps:
+1. Replace app.js with emergency fix version
+2. Restart backend server
+3. Test photo upload in frontend
+4. Check console for any remaining errors
+
+Report generated at: 7/24/2025, 5:58:25 PM
