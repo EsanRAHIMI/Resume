@@ -2,6 +2,7 @@
   "name": "resume-builder-frontend",
   "version": "0.1.0",
   "private": true,
+  "homepage": "/resume",
   "dependencies": {
     "@testing-library/dom": "^10.4.0",
     "@testing-library/jest-dom": "^6.6.3",
@@ -16,11 +17,14 @@
     "react-dropzone": "^14.3.8",
     "react-router-dom": "^7.7.0",
     "react-scripts": "5.0.1",
+    "serve": "^14.2.4",
     "web-vitals": "^2.1.4"
   },
   "scripts": {
-    "start": "react-scripts start",
+    "dev": "react-scripts start",
     "build": "react-scripts build",
+    "prestart": "node -e \"const fs=require('fs'); process.exit(fs.existsSync('build')?0:1)\" || npm run build",
+    "start": "serve -s build -l tcp://0.0.0.0:$PORT",
     "test": "react-scripts test",
     "eject": "react-scripts eject"
   },
